@@ -638,9 +638,13 @@ class App:
                                     m["creator"])
             if needle and needle not in text.lower():
                 continue
-            mark = "x" if self.sel.get(sid) else ""
-            if bool(self.sel.get(sid)) != bool(m["active"]):
-                mark += "!"
+            on, orig = bool(self.sel.get(sid)), bool(m["active"])
+            if on == orig:
+                mark = "\u2713" if on else ""
+            elif on:
+                mark = "\U0001F5F9"
+            else:
+                mark = "\u2717"
             self.tree.insert("", "end", iid=sid,
                              values=(mark, shown_title(m), sid))
 

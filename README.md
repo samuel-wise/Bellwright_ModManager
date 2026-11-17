@@ -98,8 +98,9 @@ with checkbox per member — click to switch a mod on (it moves behind its
 conflicting peers, which switch off) or off again. Bottom:
 description pane for the selected mod, with its hard conflicts and harmless
 overlaps listed (unchecked mods are ignored in these lists). The `On` column
-marks each row: `x` enabled, blank disabled, plus a `!` when the row changed
-since opening (cleared by Apply). `Apply` confirms the switch counts first,
+marks each row: `✓` enabled, blank disabled, `✗` enabled at open but now
+off, `🗹` off at open but now on (marks settle once Apply clears them).
+`Apply` confirms the switch counts first,
 then writes
 `active` flags into each `modinfo.json` (inside the Workshop content dir) and
 refreshes the game's `modloadorder.json`. It also regenerates the manager's
