@@ -107,7 +107,10 @@ conflicting peers, which switch off) or off again. Each member row ends with
 its last-updated date: the cached Workshop activity stamp when known, else
 the time Steam downloaded the mod. Bottom:
 description pane for the selected mod, with its hard conflicts and harmless
-overlaps listed (unchecked mods are ignored in these lists). The `On` column
+overlaps listed (unchecked mods are ignored in these lists). The
+`Translate` box (`None` / `English`, default `None`) renders this pane's
+descriptions in English through a free lookup, cached per mod; the original
+text shows until each answer arrives. The `On` column
 marks each row: `✓` enabled, blank disabled, `✗` enabled at open but now
 off, `🗹` off at open but now on (marks settle once Apply clears them).
 `Apply` confirms the switch counts first,

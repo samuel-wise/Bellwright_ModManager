@@ -214,6 +214,35 @@ def api_details(sid):
     return {}
 
 
+def api_translate(text):
+    """Chinese text -> English via a free keyless lookup (MyMemory JSON,
+    lingva as second choice). Empty return means: keep the original."""
+    text = " ".join(text.split())[:900]
+    if not text:
+        return ""
+    q = urllib.parse.quote(text)
+    tries = [
+        ("https://api.mymemory.eu/api/get/?q=%s&langpair=zh-CN|en" % q,
+         lambda j: j.get("responseData", {}).get("translatedText")),
+        ("https://lingva.ml/api/v1/translate/auto/en/" + q,
+         lambda j: j.get("translation")),
+    ]
+    for url, pick in tries:
+        try:
+            req = urllib.request.Request(
+                url, headers={"Accept": "application/json",
+                              "User-Agent": "Mozilla/5.0"})
+            body = urllib.request.urlopen(req, timeout=10).read().decode(
+                "utf-8", "replace")
+            out = pick(json.loads(body)) or ""
+            out = " ".join(str(out).split())
+            if out and out.upper() != "SAME" and out != text:
+                return out
+        except Exception:
+            pass
+    return ""
+
+
 def clean_bb(text):
     """Flatten BBCode-ish markup the API puts in descriptions."""
     text = re.sub(r"\[/?(?:b|i|u|h[12]|br|list|olist|li|url(?:=[^\]]*)?"
@@ -663,6 +692,12 @@ class App:
                                 or l.split(" - ")[0] == cur), cur))
         self.game_box.bind("<<ComboboxSelected>>", self.pick_game)
         self.game_box.pack(side="left", padx=(0, 6))
+        ttk.Label(top, text="Translate:").pack(side="left")
+        self.tr_box = ttk.Combobox(top, values=("None", "English"),
+                                   width=8, state="readonly")
+        self.tr_box.set("None")
+        self.tr_box.bind("<<ComboboxSelected>>", self.pick_lang)
+        self.tr_box.pack(side="left", padx=(2, 6))
         filt_lbl.pack(side="left")
         self.filter_var = tk.StringVar()
         ent = ttk.Entry(top, textvariable=self.filter_var, width=40)
@@ -795,6 +830,37 @@ class App:
         if appid.isdigit():
             self.dirpath = os.path.join(self.base, appid)
             self.reload()
+
+    def pick_lang(self, event=None):
+        """Translate box changed: re-render the current description view."""
+        self.show_desc()
+
+    def desc_for(self, m):
+        """English text when the Translate box says English; fetched lazily
+        in a worker thread and cached under 'tr:<sid>'. Original text shows
+        until the answer arrives (or if no lookup answers)."""
+        if self.tr_box.get() == "None":
+            return m["desc"]
+        sid = m["sid"]
+        cache = load_desc_cache(self.dirpath)
+        note = str(cache.get("tr:" + sid) or "")
+        if note:
+            return note
+        if not hasattr(self, "tr_wait"):
+            self.tr_wait = set()
+        if m["desc"] and sid not in self.tr_wait:
+            self.tr_wait.add(sid)
+
+            def work():
+                out = api_translate(m["desc"])
+                if out:
+                    fresh = load_desc_cache(self.dirpath)
+                    fresh["tr:" + sid] = out
+                    save_desc_cache(self.dirpath, fresh)
+                self.root.after(0, self.show_desc)
+
+            threading.Thread(target=work, daemon=True).start()
+        return m["desc"]
 
     def reload(self):
         self.mods = load_mods(self.dirpath)
@@ -976,7 +1042,8 @@ class App:
         self.desc.delete("1.0", "end")
         if m is None:
             return
-        self.desc.insert("end", "%s [%s]\n%s\n" % (m["title"], sid, m["desc"]))
+        self.desc.insert("end", "%s [%s]\n%s\n"
+                         % (m["title"], sid, self.desc_for(m)))
         hard = [o["title"] for o in self.mods
                 if o["sid"] != sid and self.sel.get(o["sid"])
                 and conflicts(m, o)]
@@ -998,7 +1065,7 @@ class App:
                 if bool(self.sel.get(m["sid"])) is want:
                     self.desc.insert(
                         "end", "%s. %s\n%s\n\n"
-                        % (letter_for(li), m["title"], m["desc"]))
+                        % (letter_for(li), m["title"], self.desc_for(m)))
 
     def on_hover(self, event):
         sid = self.tree.identify_row(event.y)
