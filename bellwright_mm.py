@@ -1073,7 +1073,7 @@ class App:
         if m is None:
             self.tip.hide()
             return
-        self.tip.show(self.tree, "%s\n%s" % (m["title"], m["desc"]))
+        self.tip.show(self.tree, "%s\n%s" % (m["title"], self.desc_for(m)))
 
     def touch(self, sid):
         """Push a chosen mod to the end of load order: last loaded wins."""
