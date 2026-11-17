@@ -1,7 +1,8 @@
-# Bellwright Mod Manager
+# Bellwright-inspired Steam Workshop Mod Manager
 
-Tkinter GUI for managing Bellwright Steam Workshop mods. The Workshop
-content folder (`steamapps\workshop\content\1812450` under your Steam
+Tkinter GUI for managing Steam Workshop mods, modelled on how Bellwright
+handles them. The Workshop
+content folder (`steamapps\workshop\content\<game id>` under your Steam
 library) is discovered automatically; a directory can also be passed as an
 argument. Any other game with Workshop mods in the same content folder is
 picked up too: the game dropdown in the toolbar lists every game that has

@@ -1,4 +1,5 @@
-"""Bellwright Mod Manager: toggle Workshop mods, auto-resolve asset conflicts.
+"""Bellwright inspired Steam Workshop Mod Manager: toggle Workshop mods,
+auto-resolve asset conflicts.
 
 Scans the Bellwright Workshop content folder, shows every mod with its
 activation state, detects conflicts (mods touching the same game asset with
@@ -644,7 +645,7 @@ class App:
         self.sel = {}
         self.mods = []
         self.order = []
-        root.title("Bellwright Mod Manager")
+        root.title("Bellwright inspired Steam Workshop Mod Manager")
         self.root = root
         top = ttk.Frame(root)
         top.pack(fill="x", padx=6, pady=4)
