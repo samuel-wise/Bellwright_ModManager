@@ -3,7 +3,10 @@
 Tkinter GUI for managing Bellwright Steam Workshop mods. The Workshop
 content folder (`steamapps\workshop\content\1812450` under your Steam
 library) is discovered automatically; a directory can also be passed as an
-argument.
+argument. Any other game with Workshop mods in the same content folder is
+picked up too: the game dropdown in the toolbar lists every game that has
+subscribed items (`steam id - title`, titles from Steam's own manifests) and
+switches the whole manager to that game, Bellwright included by default.
 
 Replaces the in-game mod menu's blunt "disable everything that overlaps"
 behaviour with explicit control.
@@ -111,8 +114,9 @@ then writes
 `active` flags into each `modinfo.json` (inside the Workshop content dir) and
 refreshes the game's `modloadorder.json`. It also regenerates the manager's
 own `modlist.txt` report — one line per mod, tab-separated
-(`steam id`, `True/False`, `Title (Creator)`, description), rotated to
-`modlist-bakN.txt` — in the same folder as the script;
+(`steam id`, `True/False`, `Title (Creator)`, description) — under
+`modlists\<steam id - title>\` next to the script, with older copies
+rotated into that folder's `backups\` subfolder;
 checked mods are written first
 and unchecked ones toward the end, so the game shows disabled entries at the
 bottom while enabled mods keep their relative order. Scrollbars on
@@ -134,3 +138,6 @@ match the group panel.
 
 - `bellwright_mm.py` — everything (loader, conflict logic, GUI).
 - `Start Mod Manager.cmd` — launcher.
+- `steam-workshop-games.txt` — cached `steam id -> title` lines for games
+  with Workshop items (dropdown labels; rebuilt from Steam's own manifests).
+- `modlists\` — per-game `modlist.txt` reports, backups under `backups\`.

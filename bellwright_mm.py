@@ -90,6 +90,87 @@ def support_dir():
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def games_cache_path():
+    return os.path.join(support_dir(), "steam-workshop-games.txt")
+
+
+def load_games_cache():
+    out = {}
+    try:
+        with open(games_cache_path(), encoding="utf-8-sig") as fh:
+            for line in fh:
+                a, _, t = line.rstrip("\n").partition("\t")
+                if a.strip().isdigit():
+                    out[a.strip()] = t.strip()
+    except OSError:
+        pass
+    return out
+
+
+def save_games_cache(titles):
+    try:
+        with open(games_cache_path(), "w", encoding="utf-8") as fh:
+            for a in sorted(titles, key=int):
+                fh.write("%s\t%s\n" % (a, titles[a]))
+    except OSError:
+        pass
+
+
+def read_app_titles(steamapps_dir):
+    """appid -> product name pairs from Steam's per-app acf manifests."""
+    out = {}
+    try:
+        names = sorted(os.listdir(steamapps_dir))
+    except OSError:
+        return out
+    for nme in names:
+        if not nme.startswith("appmanifest_") or not nme.endswith(".acf"):
+            continue
+        appid = nme[len("appmanifest_"):-len(".acf")]
+        if not appid.isdigit():
+            continue
+        try:
+            raw = open(os.path.join(steamapps_dir, nme), "rb").read()
+        except OSError:
+            continue
+        if raw[:2] in (b"\xff\xfe", b"\xfe\xff") or b"\x00" in raw[:40]:
+            text = raw.decode("utf-16", "replace")
+        else:
+            text = raw.decode("utf-8", "replace")
+        mm = re.search(r'"name"\s+"([^"]+)"', text)
+        if mm:
+            out[appid] = mm.group(1)
+    return out
+
+
+def game_label(appid, title):
+    return "%s - %s" % (appid, title) if title else appid
+
+
+def discover_games(base):
+    """Installed Workshop games under content/: labels 'steam id - title'.
+    Names come from the games cache file first, Steam's appmanifest.vdf
+    second; the merged result is written back to the cache."""
+    titles = load_games_cache()
+    if not base or not os.path.isdir(base):
+        return []
+    found = []
+    for appid in sorted((d for d in os.listdir(base) if d.isdigit()),
+                        key=int):
+        try:
+            kids = os.listdir(os.path.join(base, appid))
+        except OSError:
+            continue
+        if any(k.isdigit() for k in kids):
+            found.append(appid)
+    if any(not titles.get(a) for a in found):
+        titles.update(dict((k, v) for k, v in read_app_titles(
+            os.path.dirname(os.path.dirname(base))).items() if v))
+    merged = dict((a, titles.get(a, "")) for a in found)
+    save_games_cache(merged)
+    return [game_label(a, merged[a]) for a in found]
+
+
 def load_desc_cache(dirpath):
     try:
         with open(desc_cache_path(dirpath), encoding="utf-8-sig") as fh:
@@ -459,13 +540,21 @@ def write_active(dirpath, sid, active):
 
 
 def write_modlist(dirpath, sel, order=None):
-    home = support_dir()
+    appid = os.path.basename(dirpath.rstrip(os.sep)) or APP_ID
+    label = game_label(appid, load_games_cache().get(appid, ""))
+    for ch in '/\\:*?"<>|':
+        label = label.replace(ch, " ")
+    home = os.path.join(support_dir(), "modlists", label)
+    backups = os.path.join(home, "backups")
+    if not os.path.isdir(home):
+        os.makedirs(backups, exist_ok=True)
     list_file = os.path.join(home, "modlist.txt")
     if os.path.isfile(list_file):
         n = 0
-        while os.path.isfile(os.path.join(home, "modlist-bak%d.txt" % n)):
+        while os.path.isfile(os.path.join(backups, "modlist-bak%d.txt" % n)):
             n += 1
-        os.replace(list_file, os.path.join(home, "modlist-bak%d.txt" % n))
+        os.replace(list_file, os.path.join(backups,
+                                           "modlist-bak%d.txt" % n))
     mods = load_mods(dirpath)
     by_id = dict((m["sid"], m) for m in mods)
     seq = [s for s in (order or []) if s in by_id]
@@ -559,7 +648,17 @@ class App:
         self.root = root
         top = ttk.Frame(root)
         top.pack(fill="x", padx=6, pady=4)
-        ttk.Label(top, text="Filter:").pack(side="left")
+        filt_lbl = ttk.Label(top, text="Filter:")
+        cur = os.path.basename((dirpath or "").rstrip(os.sep))
+        self.base = os.path.dirname((dirpath or "").rstrip(os.sep))
+        labels = discover_games(self.base)
+        self.game_box = ttk.Combobox(top, width=42, state="readonly")
+        self.game_box["values"] = labels
+        self.game_box.set(next((l for l in labels if l == cur
+                                or l.split(" - ")[0] == cur), cur))
+        self.game_box.bind("<<ComboboxSelected>>", self.pick_game)
+        self.game_box.pack(side="left", padx=(0, 6))
+        filt_lbl.pack(side="left")
         self.filter_var = tk.StringVar()
         ent = ttk.Entry(top, textvariable=self.filter_var, width=40)
         ent.pack(side="left", padx=4)
@@ -684,6 +783,13 @@ class App:
         self.split_left = getattr(self, "split_left", 8) - 1
         if self.split_left > 0:
             self.root.after(80, lambda: self.center_split_width(width))
+
+    def pick_game(self, event=None):
+        """Switch to another Workshop game's content dir and resync."""
+        appid = self.game_box.get().split(" - ", 1)[0].strip()
+        if appid.isdigit():
+            self.dirpath = os.path.join(self.base, appid)
+            self.reload()
 
     def reload(self):
         self.mods = load_mods(self.dirpath)

@@ -1,4 +1,6 @@
 __pycache__/
 workshop-desc-cache.json
+steam-workshop-games.txt
+modlists/
 modlist.txt
 modlist-bak*.txt
