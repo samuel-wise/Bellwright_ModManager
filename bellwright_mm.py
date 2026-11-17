@@ -20,7 +20,7 @@ import threading
 import time
 import urllib.request
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 APP_ID = "1812450"
 
@@ -492,6 +492,10 @@ class App:
         ent.pack(side="left", padx=4)
         ent.bind("<KeyRelease>", lambda e: self.refresh_tree())
         ttk.Button(top, text="Reload", command=self.reload).pack(side="left", padx=4)
+        ttk.Button(top, text="Select all", command=self.select_all).pack(side="left", padx=4)
+        ttk.Button(top, text="Unselect all", command=self.unselect_all).pack(side="left", padx=4)
+        ttk.Button(top, text="Reset", command=self.reload).pack(side="left", padx=4)
+        ttk.Button(top, text="Apply", command=self.apply).pack(side="left", padx=4)
         body = ttk.Panedwindow(root, orient="vertical")
         body.pack(fill="both", expand=True, padx=6)
         self.vbody = body
@@ -511,7 +515,11 @@ class App:
         self.tree.configure(yscrollcommand=vsb.set)
         self.tree.pack(side="left", fill="both", expand=True)
         vsb.pack(side="left", fill="y")
-        self.tree.bind("<Button-1>", self.on_click)
+        self._drag = None
+        self._drag_moved = False
+        self.tree.bind("<ButtonPress-1>", self.press_row)
+        self.tree.bind("<B1-Motion>", self.drag_row)
+        self.tree.bind("<ButtonRelease-1>", self.release_row)
         self.tree.bind("<<TreeviewSelect>>", self.show_desc)
         self.tip = ToolTip()
         self.tree.bind("<Motion>", self.on_hover)
@@ -535,13 +543,8 @@ class App:
         body.add(self.desc, weight=0)
         bottom = ttk.Frame(root)
         bottom.pack(fill="x", padx=6, pady=4)
-        ttk.Button(bottom, text="Move up", command=lambda: self.move_step(-1)).pack(side="left")
-        ttk.Button(bottom, text="Move down", command=lambda: self.move_step(1)).pack(side="left", padx=4)
         ttk.Button(bottom, text="Auto-resolve all", command=self.auto_all).pack(side="left")
-        ttk.Button(bottom, text="Unselect group mods", command=self.clear_groups).pack(side="left", padx=4)
-        ttk.Button(bottom, text="Best fill groups", command=self.fill_best).pack(side="left")
-        ttk.Button(bottom, text="Select all", command=self.select_all).pack(side="left", padx=4)
-        ttk.Button(bottom, text="Apply", command=self.apply).pack(side="left", padx=6)
+        ttk.Button(bottom, text="Best fill groups", command=self.fill_best).pack(side="left", padx=4)
         self.status = tk.StringVar(value="Ready")
         ttk.Label(bottom, textvariable=self.status).pack(side="left", padx=6)
 
@@ -625,17 +628,21 @@ class App:
         needle = self.filter_var.get().lower()
         self.tree.delete(*self.tree.get_children())
         by_id = dict((m["sid"], m) for m in self.mods)
-        for sid in self.order:
+        checked = [s for s in self.order
+                   if by_id.get(s) and self.sel.get(s)]
+        rest = [s for s in self.order
+                if by_id.get(s) and not self.sel.get(s)]
+        for sid in checked + rest:
             m = by_id.get(sid)
-            if m is None:
-                continue
             text = "%s %s %s %s" % (m["title"], m["folder"], m["sid"],
                                     m["creator"])
             if needle and needle not in text.lower():
                 continue
+            mark = "x" if self.sel.get(sid) else ""
+            if bool(self.sel.get(sid)) != bool(m["active"]):
+                mark += "!"
             self.tree.insert("", "end", iid=sid,
-                             values=("x" if self.sel.get(sid) else "",
-                                     shown_title(m), sid))
+                             values=(mark, shown_title(m), sid))
 
     def visible_groups(self):
         """Conflict groups among checked mods, multi-member only, numbered
@@ -773,19 +780,6 @@ class App:
             return
         self.tip.show(self.tree, "%s\n%s" % (m["title"], m["desc"]))
 
-    def move_step(self, step):
-        sel = self.tree.selection()
-        if not sel:
-            return
-        sid = sel[0]
-        i = self.order.index(sid)
-        j = min(max(i + step, 0), len(self.order) - 1)
-        if i == j:
-            return
-        self.order[i], self.order[j] = self.order[j], self.order[i]
-        self.refresh_tree()
-        self.tree.selection_set(sid)
-
     def touch(self, sid):
         """Push a chosen mod to the end of load order: last loaded wins."""
         if sid in self.order:
@@ -813,13 +807,35 @@ class App:
         self.refresh_tree()
         self.refresh_groups()
 
-    def on_click(self, event):
-        sid = self.tree.identify_row(event.y)
-        if sid in self.sel:
+    def press_row(self, event):
+        self._drag = self.tree.identify_row(event.y)
+        self._drag_moved = False
+
+    def drag_row(self, event):
+        """Reorder rows by dragging: the row follows the pointer."""
+        sid, target = self._drag, self.tree.identify_row(event.y)
+        if not sid or not target or sid == target:
+            return
+        self._drag_moved = True
+        down = self.order.index(sid) < self.order.index(target)
+        self.order.remove(sid)
+        ti = self.order.index(target)
+        self.order.insert(ti + 1 if down else ti, sid)
+        self.refresh_tree()
+        self.tree.selection_set(sid)
+
+    def release_row(self, event):
+        sid, moved = self._drag, self._drag_moved
+        self._drag = None
+        if sid is None:
+            return
+        if sid in self.sel and not moved:
             self.sel[sid] = not self.sel[sid]
             self.refresh_tree()
             self.tree.selection_set(sid)
             self.show_desc()
+            self.refresh_groups()
+        elif moved:
             self.refresh_groups()
 
     def auto_group(self, group):
@@ -841,18 +857,17 @@ class App:
         self.refresh_tree()
         self.refresh_groups()
 
-    def clear_groups(self):
-        for group in conflict_groups(self.checked_mods()):
-            if len(group) > 1:
-                for m in group:
-                    self.sel[m["sid"]] = False
-        self.refresh_tree()
-        self.refresh_groups()
-
     def select_all(self):
         """Check every known mod."""
         for m in self.mods:
             self.sel[m["sid"]] = True
+        self.refresh_tree()
+        self.refresh_groups()
+
+    def unselect_all(self):
+        """Clear every checkbox."""
+        for m in self.mods:
+            self.sel[m["sid"]] = False
         self.refresh_tree()
         self.refresh_groups()
 
@@ -871,6 +886,18 @@ class App:
         self.refresh_groups()
 
     def apply(self):
+        turns_on = sum(1 for m in self.mods
+                       if self.sel.get(m["sid"]) and not m["active"])
+        turns_off = sum(1 for m in self.mods
+                        if not self.sel.get(m["sid"]) and m["active"])
+        if turns_on or turns_off:
+            msg = ("Apply changes to Bellwright mods?\n\n"
+                   "Switching on:  %d mods\nSwitching off: %d mods\n\n"
+                   "Disabled mods move to the bottom of the game's mod "
+                   "list.\nEnabled mods keep their relative order."
+                   % (turns_on, turns_off))
+            if not messagebox.askokcancel("Apply changes", msg):
+                return
         changed = 0
         for m in self.mods:
             want = self.sel.get(m["sid"], m["active"])

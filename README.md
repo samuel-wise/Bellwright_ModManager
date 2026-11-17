@@ -51,10 +51,13 @@ for the current order, with numeric steam ids as fallback. `modlist.txt` is
 never read for ordering either — it exists only as the report the manager
 writes on Apply. The left list shows and edits this order:
 
-- `Move up` / `Move down` reorder the selected row.
-- `Reload` re-reads every `modinfo.json` plus the game's order file from
-  disk and resyncs the checkboxes from the current `active` flags, so mods
-  toggled inside the game show up without restarting the manager.
+- Drag a row up or down to reorder the load order; a plain click toggles the
+  mod. Checked rows always sit above unchecked ones, so what the list shows
+  is what Apply will write.
+- `Reload` / `Reset` re-read every `modinfo.json` plus the game's order file
+  from disk, resync the checkboxes to the current `active` flags and drop
+  unsaved edits, so mods toggled inside the game show up without restarting
+  the manager.
 - Mod descriptions are read from each mod's `modinfo.json`; when one is
   empty or shorter than 10 words (usually placeholder text), the text is
   taken from the item's Steam Workshop page instead. Missing texts and
@@ -70,14 +73,15 @@ writes on Apply. The left list shows and edits this order:
   conflict group it keeps the checked mods that are mutually compatible
   (largest first) and drops checked ones that clash, pushing kept mods
   toward the end so their edits load last. Nothing gets switched on by
-  itself: clear the groups with `Unselect group mods`, tick your favourites,
-  then hit it to tidy up conflicts. Solo mods are untouched throughout.
+  itself: start from `Unselect all`, tick your favourites, then hit it to
+  tidy up conflicts. Solo mods are untouched throughout.
 - `Best fill groups` checks, per group, the largest mutually compatible set
   ignoring current checks (greedy: biggest mods first, keep it if compatible
   with everything kept). Use it after a clear to get a working baseline in
   one click; re-running it is stable.
 - `Select all` ticks every mod (solo ones included), handy as a starting
-  point before `Auto-resolve all` prunes clashes among them.
+  point before `Auto-resolve all` prunes clashes among them; `Unselect all`
+  clears everything for a from-scratch baseline.
 - Members of a group are lettered `a. b. c. ...` and the maximal compatible
   combinations are listed compactly below them, e.g. `Combo A: a,c,d (3)`,
   `Combo B: b,d (2)`. Click a combo row to apply it to that group; click a
@@ -93,7 +97,10 @@ refreshes with each toggle). Right: conflict groups
 with checkbox per member — click to switch a mod on (it moves behind its
 conflicting peers, which switch off) or off again. Bottom:
 description pane for the selected mod, with its hard conflicts and harmless
-overlaps listed (unchecked mods are ignored in these lists). `Apply` writes
+overlaps listed (unchecked mods are ignored in these lists). The `On` column
+marks each row: `x` enabled, blank disabled, plus a `!` when the row changed
+since opening (cleared by Apply). `Apply` confirms the switch counts first,
+then writes
 `active` flags into each `modinfo.json` (inside the Workshop content dir) and
 refreshes the game's `modloadorder.json`. It also regenerates the manager's
 own `modlist.txt` report — one line per mod, tab-separated
