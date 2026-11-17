@@ -99,7 +99,9 @@ toggle). Above the right pane: an Authors strip, one row per creator
 on/off in one click. Right: conflict groups
 with checkbox per member — each row reads `Title (Author)`; click to switch
 a mod on (it moves behind its
-conflicting peers, which switch off) or off again. Bottom:
+conflicting peers, which switch off) or off again. Each member row ends with
+its last-updated date: the cached Workshop activity stamp when known, else
+the time Steam downloaded the mod. Bottom:
 description pane for the selected mod, with its hard conflicts and harmless
 overlaps listed (unchecked mods are ignored in these lists). The `On` column
 marks each row: `✓` enabled, blank disabled, `✗` enabled at open but now
