@@ -503,13 +503,16 @@ class App:
         self.paned = paned
         left = ttk.Frame(paned, width=520)
         paned.add(left, weight=1)
-        self.tree = ttk.Treeview(left, columns=("on", "title", "sid"),
+        self.tree = ttk.Treeview(left, columns=("on", "title", "author",
+                                                "sid"),
                                  height=20, show="headings")
         self.tree.heading("on", text="On")
         self.tree.heading("title", text="Title")
+        self.tree.heading("author", text="Author")
         self.tree.heading("sid", text="Steam ID")
         self.tree.column("on", width=50, anchor="center", stretch=False)
-        self.tree.column("title", width=380)
+        self.tree.column("title", width=300)
+        self.tree.column("author", width=130, stretch=False)
         self.tree.column("sid", width=90, stretch=False)
         vsb = ttk.Scrollbar(left, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=vsb.set)
@@ -646,7 +649,7 @@ class App:
             else:
                 mark = "\u2717"
             self.tree.insert("", "end", iid=sid,
-                             values=(mark, shown_title(m), sid))
+                             values=(mark, m["title"], m["creator"], sid))
 
     def visible_groups(self):
         """Conflict groups among checked mods, multi-member only, numbered
@@ -682,7 +685,8 @@ class App:
             for mm in members:
                 mark = "[x]" if self.sel.get(mm["sid"]) else "[ ]"
                 row = ttk.Label(frame, text="%s. %s %s"
-                                % (letters[mm["sid"]], mark, mm["title"]))
+                                % (letters[mm["sid"]], mark,
+                                   shown_title(mm)))
                 row.pack(anchor="w")
                 row.bind("<Button-1>",
                          lambda e, s=mm["sid"]: self.member_click(s))

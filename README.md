@@ -64,8 +64,8 @@ writes on Apply. The left list shows and edits this order:
   creator names are fetched on a background thread (opening the window
   never waits for them) and cached in `workshop-desc-cache.json` next to
   the manager script; offline reloads reuse the cache. Creator names are
-  looked up once per unique creator id. Titles then show as
-  `Title (Creator)` in the list and the report. The manager regenerates
+  looked up once per unique creator id. The list shows the name in its own
+  `Author` column; the report shows it as part of `Title (Creator)`. The manager regenerates
   `modlist.txt` itself on Apply (built directly from the `modinfo.json`
   data); it reads mod info only from `modinfo.json` and the
   Workshop, never back from `modlist.txt`.
@@ -92,9 +92,11 @@ writes on Apply. The left list shows and edits this order:
 
 ## GUI
 
-Left: filterable mod list (click row = toggle on/off; the conflict panel
-refreshes with each toggle). Right: conflict groups
-with checkbox per member — click to switch a mod on (it moves behind its
+Left: filterable mod list with columns `On` / `Title` / `Author` /
+`Steam ID` (click row = toggle on/off; the conflict panel refreshes with each
+toggle). Right: conflict groups
+with checkbox per member — each row reads `Title (Author)`; click to switch
+a mod on (it moves behind its
 conflicting peers, which switch off) or off again. Bottom:
 description pane for the selected mod, with its hard conflicts and harmless
 overlaps listed (unchecked mods are ignored in these lists). The `On` column
