@@ -16,6 +16,7 @@ import os
 import re
 import sys
 import textwrap
+import threading
 import time
 import urllib.request
 import tkinter as tk
@@ -120,12 +121,24 @@ def fetch_desc(sid):
         except Exception:
             time.sleep(2)
     if not page:
-        return ""
+        return "", ""
     m = re.search('id="highlightContent">(.+?)</div>', page, re.S)
-    if not m:
-        return ""
-    text = re.sub(r"<[^>]+>", " ", m.group(1))
-    return " ".join(html.unescape(text).split())
+    desc = ""
+    if m:
+        text = re.sub(r"<[^>]+>", " ", m.group(1))
+        desc = " ".join(html.unescape(text).split())
+    name = ""
+    mm = re.search(r'href="[^"]*/id/([^"/]+)"', page)
+    if mm:
+        name = mm.group(1).strip()
+    else:
+        mm = re.search(
+            r'href="[^"]*/(?:id|profiles)/[^"]+"[^>]*>([^<]{2,60})<', page)
+        if mm:
+            name = html.unescape(mm.group(1)).strip()
+            if name.endswith("'s Workshop"):
+                name = name[:-len("'s Workshop")]
+    return desc, name
 
 
 def load_mods(dirpath):
@@ -147,28 +160,77 @@ def load_mods(dirpath):
             h = hs.get(p)
             if h:
                 stems.setdefault(_stem(p), set()).add(h)
+        cid = str(info.get("creator") or "").strip()
+        author = " ".join(str(info.get("author") or "").split())
         mods.append({"sid": sid,
                      "title": info.get("title") or "(untitled)",
                      "folder": info.get("folderName") or sid,
                      "desc": desc,
+                     "cid": cid,
+                     "creator": author or cid,
                      "active": bool(info.get("active", True)),
                      "edited": edited,
                      "assets": assets,
                      "stems": stems,
                      "hashes": hs})
-    blanks = [m for m in mods if not m["desc"]]
-    if blanks:
-        cache = load_desc_cache(dirpath)
-        changed = False
-        for m in blanks[:60]:
-            note = cache.get(m["sid"]) or fetch_desc(m["sid"])
-            if note:
-                m["desc"] = note
-                cache[m["sid"]] = note
-                changed = True
-        if changed:
-            save_desc_cache(dirpath, cache)
+    apply_cache(load_desc_cache(dirpath), mods)
     return mods
+
+
+def apply_cache(cache, mods):
+    """Fill short descriptions and creator names from the local cache."""
+    for m in mods:
+        short = len(m["desc"].split()) < 10
+        ent = cache.get(m["sid"])
+        if isinstance(ent, str):
+            ent = {"desc": ent}
+        cname = cache.get("by:" + m["cid"]) if m["cid"] else None
+        if not cname and isinstance(ent, dict):
+            cname = ent.get("creator") or None
+        if short and (ent or {}).get("desc"):
+            m["desc"] = ent["desc"]
+        if cname:
+            m["creator"] = cname
+
+
+def fetch_missing(dirpath, mods):
+    """Slow pass (worker thread): top up short descriptions and missing
+    creator names from the Steam Workshop into the cache, deduped per
+    creator id. Returns True if new data arrived."""
+    cache = load_desc_cache(dirpath)
+    changed = False
+    tried, tries = set(), 0
+    for m in mods:
+        short = len(m["desc"].split()) < 10
+        cid = m["cid"]
+        ent = cache.get(m["sid"])
+        if isinstance(ent, str):
+            ent = {"desc": ent}
+        ent = dict(ent or {})
+        name_key = ("by:" + cid) if cid else ""
+        cname = cache.get(name_key) if name_key else None
+        if cname is None and isinstance(ent, dict) and ent.get("creator"):
+            cname = ent["creator"]
+            if name_key:
+                cache[name_key] = cname
+                changed = True
+        need_desc = short and not ent.get("desc")
+        need_name = bool(cid) and cname is None and cid not in tried
+        if (need_desc or need_name) and tries < 60:
+            tries += 1
+            tried.add(cid)
+            note, pname = fetch_desc(m["sid"])
+            changed = True
+            if note and not ent.get("desc"):
+                ent["desc"] = note
+            if pname and name_key:
+                cache[name_key] = pname
+            if ent.get("desc"):
+                cache[m["sid"]] = ent
+    if changed:
+        save_desc_cache(dirpath, cache)
+    apply_cache(cache, mods)
+    return changed
 
 
 def config_path():
@@ -346,8 +408,8 @@ def write_modlist(dirpath, sel, order=None):
     for sid in seq:
         m = by_id[sid]
         on = "True" if is_on(sid) else "False"
-        lines.append("%s\t%s\t%s\t%s\t%s"
-                     % (sid, on, m["folder"], m["title"], m["desc"]))
+        lines.append("%s\t%s\t%s\t%s"
+                     % (sid, on, shown_title(m), m["desc"]))
     with open(list_file, "w", encoding="utf-8-sig") as fh:
         fh.write("\n".join(lines) + "\n")
     entries = [{"name": by_id[s]["folder"], "steamId": int(s)} for s in seq]
@@ -358,6 +420,13 @@ def write_modlist(dirpath, sel, order=None):
                       ensure_ascii=False)
             fh.write("\n")
     return len(lines)
+
+def shown_title(mod):
+    """Title plus creator in parentheses, for list and report display."""
+    if mod["creator"]:
+        return "%s (%s)" % (mod["title"], mod["creator"])
+    return mod["title"]
+
 
 def letter_for(li):
     """a., b., ... wraps to a1., b1. ... past 26 members."""
@@ -480,6 +549,29 @@ class App:
         root.bind("<Configure>", self.center_split, add=True)
         root.after(50, lambda: self.center_split_width(root.winfo_width()))
         self.reload()
+        self.start_bg()
+
+    def start_bg(self):
+        """Top up descriptions/names on a worker thread; non-blocking, the
+        list repaints itself once new data lands in the cache."""
+        def work():
+            try:
+                fetch_missing(self.dirpath, self.mods)
+            except Exception:
+                pass
+            try:
+                self.root.after(0, self.after_bg)
+            except Exception:
+                pass
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def after_bg(self):
+        keep = self.tree.selection()
+        self.refresh_tree()
+        if keep and keep[0] in self.tree.get_children():
+            self.tree.selection_set(keep[0])
+            self.show_desc()
 
     def center_split(self, event):
         self.center_split_width(event.width)
@@ -537,12 +629,13 @@ class App:
             m = by_id.get(sid)
             if m is None:
                 continue
-            text = "%s %s %s" % (m["title"], m["folder"], m["sid"])
+            text = "%s %s %s %s" % (m["title"], m["folder"], m["sid"],
+                                    m["creator"])
             if needle and needle not in text.lower():
                 continue
             self.tree.insert("", "end", iid=sid,
                              values=("x" if self.sel.get(sid) else "",
-                                     m["title"], sid))
+                                     shown_title(m), sid))
 
     def visible_groups(self):
         """Conflict groups among checked mods, multi-member only, numbered

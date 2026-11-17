@@ -56,11 +56,15 @@ writes on Apply. The left list shows and edits this order:
   disk and resyncs the checkboxes from the current `active` flags, so mods
   toggled inside the game show up without restarting the manager.
 - Mod descriptions are read from each mod's `modinfo.json`; when one is
-  empty, the text is fetched from the item's Steam Workshop page and cached
-  in `workshop-desc-cache.json` next to the manager script (offline reloads
-  reuse the cache). The manager regenerates `modlist.txt` itself on Apply
-  (built directly from the `modinfo.json` data); it reads mod info only
-  from `modinfo.json` and the
+  empty or shorter than 10 words (usually placeholder text), the text is
+  taken from the item's Steam Workshop page instead. Missing texts and
+  creator names are fetched on a background thread (opening the window
+  never waits for them) and cached in `workshop-desc-cache.json` next to
+  the manager script; offline reloads reuse the cache. Creator names are
+  looked up once per unique creator id. Titles then show as
+  `Title (Creator)` in the list and the report. The manager regenerates
+  `modlist.txt` itself on Apply (built directly from the `modinfo.json`
+  data); it reads mod info only from `modinfo.json` and the
   Workshop, never back from `modlist.txt`.
 - `Auto-resolve all` works over what is currently checked: within each
   conflict group it keeps the checked mods that are mutually compatible
@@ -92,8 +96,9 @@ description pane for the selected mod, with its hard conflicts and harmless
 overlaps listed (unchecked mods are ignored in these lists). `Apply` writes
 `active` flags into each `modinfo.json` (inside the Workshop content dir) and
 refreshes the game's `modloadorder.json`. It also regenerates the manager's
-own `modlist.txt` report — tab format matching the layout the game's tooling
-uses, rotated to `modlist-bakN.txt` — in the same folder as the script;
+own `modlist.txt` report — one line per mod, tab-separated
+(`steam id`, `True/False`, `Title (Creator)`, description), rotated to
+`modlist-bakN.txt` — in the same folder as the script;
 checked mods are written first
 and unchecked ones toward the end, so the game shows disabled entries at the
 bottom while enabled mods keep their relative order. Scrollbars on
