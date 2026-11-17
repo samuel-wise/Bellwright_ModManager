@@ -106,8 +106,12 @@ def save_desc_cache(dirpath, cache):
         pass
 
 
-def fetch_desc(sid):
-    """Grab one item's description block from its Steam Workshop page."""
+def fetch_desc(sid, cid=""):
+    """Grab one item's description block and creator name from its Steam
+    Workshop page. Names come from the creator profile link's anchor text
+    (the persona name); with cid given, the link matching that creator id is
+    preferred so unrelated links cannot leak in. The vanity slug is only a
+    fallback."""
     url = ("https://steamcommunity.com/sharedfiles/filedetails/"
            "?id=%s&appid=%s" % (sid, APP_ID))
     req = urllib.request.Request(
@@ -128,16 +132,23 @@ def fetch_desc(sid):
         text = re.sub(r"<[^>]+>", " ", m.group(1))
         desc = " ".join(html.unescape(text).split())
     name = ""
-    mm = re.search(r'href="[^"]*/id/([^"/]+)"', page)
-    if mm:
-        name = mm.group(1).strip()
-    else:
-        mm = re.search(
-            r'href="[^"]*/(?:id|profiles)/[^"]+"[^>]*>([^<]{2,60})<', page)
+    pats = []
+    if cid:
+        pats.append('href="[^"]*/(?:profiles|online)/%s[^"]*"[^>]*>'
+                    '([^<]{2,60})<' % re.escape(cid))
+    pats.append(r'href="[^"]*/(?:id|profiles)/[^"]+"[^>]*>([^<]{2,60})<')
+    for pat in pats:
+        mm = re.search(pat, page)
         if mm:
             name = html.unescape(mm.group(1)).strip()
-            if name.endswith("'s Workshop"):
-                name = name[:-len("'s Workshop")]
+            if name:
+                break
+    if not name:
+        mm = re.search(r'href="[^"]*/id/([^"/]+)"', page)
+        if mm:
+            name = mm.group(1).strip()
+    if name.endswith("'s Workshop"):
+        name = name[:-len("'s Workshop")]
     return desc, name
 
 
@@ -219,7 +230,7 @@ def fetch_missing(dirpath, mods):
         if (need_desc or need_name) and tries < 60:
             tries += 1
             tried.add(cid)
-            note, pname = fetch_desc(m["sid"])
+            note, pname = fetch_desc(m["sid"], m["cid"])
             changed = True
             if note and not ent.get("desc"):
                 ent["desc"] = note
