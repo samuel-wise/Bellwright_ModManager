@@ -125,7 +125,7 @@ def fetch_desc(sid, cid=""):
         except Exception:
             time.sleep(2)
     if not page:
-        return "", ""
+        return "", "", ""
     m = re.search('id="highlightContent">(.+?)</div>', page, re.S)
     desc = ""
     if m:
@@ -149,7 +149,12 @@ def fetch_desc(sid, cid=""):
             name = mm.group(1).strip()
     if name.endswith("'s Workshop"):
         name = name[:-len("'s Workshop")]
-    return desc, name
+    epochs = re.findall(r"\b1[67]\d{8}\b", page)
+    cutoff = int(time.time()) - 3 * 86400
+    past = [e for e in epochs if int(e) <= cutoff]
+    pool = past or epochs
+    updated = max(pool, key=int) if pool else ""
+    return desc, name, updated
 
 
 def load_mods(dirpath):
@@ -173,6 +178,11 @@ def load_mods(dirpath):
                 stems.setdefault(_stem(p), set()).add(h)
         cid = str(info.get("creator") or "").strip()
         author = " ".join(str(info.get("author") or "").split())
+        try:
+            upd = str(int(os.path.getmtime(os.path.join(
+                dirpath, sid, "modinfo.json"))))
+        except Exception:
+            upd = ""
         mods.append({"sid": sid,
                      "title": info.get("title") or "(untitled)",
                      "folder": info.get("folderName") or sid,
@@ -183,7 +193,8 @@ def load_mods(dirpath):
                      "edited": edited,
                      "assets": assets,
                      "stems": stems,
-                     "hashes": hs})
+                     "hashes": hs,
+                     "upd": upd})
     apply_cache(load_desc_cache(dirpath), mods)
     return mods
 
@@ -202,6 +213,17 @@ def apply_cache(cache, mods):
             m["desc"] = ent["desc"]
         if cname:
             m["creator"] = cname
+        if isinstance(ent, dict) and ent.get("updated"):
+            m["upd"] = str(ent["updated"])
+
+
+def upd_stamp(mod):
+    """Short 'last touched' date: cached epoch when present, else the time
+    Steam wrote the modinfo.json (its download stamp)."""
+    try:
+        return time.strftime("%Y-%m-%d", time.localtime(int(mod["upd"])))
+    except Exception:
+        return ""
 
 
 def fetch_missing(dirpath, mods):
@@ -230,13 +252,15 @@ def fetch_missing(dirpath, mods):
         if (need_desc or need_name) and tries < 60:
             tries += 1
             tried.add(cid)
-            note, pname = fetch_desc(m["sid"], m["cid"])
+            note, pname, pup = fetch_desc(m["sid"], m["cid"])
             changed = True
             if note and not ent.get("desc"):
                 ent["desc"] = note
             if pname and name_key:
                 cache[name_key] = pname
-            if ent.get("desc"):
+            if pup and not ent.get("updated"):
+                ent["updated"] = pup
+            if ent.get("desc") or ent.get("updated"):
                 cache[m["sid"]] = ent
     if changed:
         save_desc_cache(dirpath, cache)
@@ -699,9 +723,12 @@ class App:
                 idx[mm["sid"]] = li
             for mm in members:
                 mark = "[x]" if self.sel.get(mm["sid"]) else "[ ]"
-                row = ttk.Label(frame, text="%s. %s %s"
-                                % (letters[mm["sid"]], mark,
-                                   shown_title(mm)))
+                base = "%s. %s %s" % (letters[mm["sid"]], mark,
+                                      shown_title(mm))
+                stamp = upd_stamp(mm)
+                if stamp:
+                    base += " (%s)" % stamp
+                row = ttk.Label(frame, text=base)
                 row.pack(anchor="w")
                 row.bind("<Button-1>",
                          lambda e, s=mm["sid"]: self.member_click(s))
