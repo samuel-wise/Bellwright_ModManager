@@ -158,6 +158,10 @@ def discover_games(base):
     found = []
     for appid in sorted((d for d in os.listdir(base) if d.isdigit()),
                         key=int):
+        if appid == "241100":
+            # "Steam Controller Configs": Valve's internal holder app for
+            # controller profiles, not a real game - keep it out of the list.
+            continue
         try:
             kids = os.listdir(os.path.join(base, appid))
         except OSError:
