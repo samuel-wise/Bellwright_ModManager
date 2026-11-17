@@ -538,8 +538,12 @@ class App:
         self.tip = ToolTip()
         self.tree.bind("<Motion>", self.on_hover)
         self.tree.bind("<Leave>", lambda e: self.tip.hide())
-        panel = ttk.LabelFrame(paned, text="Conflict groups")
-        paned.add(panel, weight=1)
+        right = ttk.Frame(paned)
+        paned.add(right, weight=1)
+        self.authors = ttk.LabelFrame(right, text="Authors")
+        self.authors.pack(side="top", fill="x", pady=(0, 4))
+        panel = ttk.LabelFrame(right, text="Conflict groups")
+        panel.pack(side="top", fill="both", expand=True)
         self.canvas = tk.Canvas(panel, width=520, highlightthickness=0)
         psb = ttk.Scrollbar(panel, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=psb.set)
@@ -725,6 +729,35 @@ class App:
         self.canvas.update_idletasks()
         bbox = self.canvas.bbox("all") or (0, 0, 1, 1)
         self.canvas.configure(scrollregion=bbox)
+        self.build_authors()
+
+    def build_authors(self):
+        """One row per creator above the groups pane: checkbox + steam id +
+        name. The checkbox switches that whole author's mods on/off."""
+        for child in self.authors.winfo_children():
+            child.destroy()
+        heads = {}
+        for m in self.mods:
+            if m["cid"] and m["cid"] not in heads:
+                heads[m["cid"]] = m["creator"] or m["cid"]
+        for cid, name in sorted(heads.items(), key=lambda x: x[1].lower()):
+            on = any(bool(self.sel.get(x["sid"])) for x in self.mods
+                     if x["cid"] == cid)
+            var = tk.BooleanVar(value=bool(on))
+            row = ttk.Frame(self.authors)
+            row.pack(anchor="w")
+            ttk.Checkbutton(row, variable=var,
+                            command=lambda c=cid, v=var: self.author_toggle(
+                                c, v.get())).pack(side="left")
+            ttk.Label(row, text=cid).pack(side="left", padx=4)
+            ttk.Label(row, text=name).pack(side="left")
+
+    def author_toggle(self, cid, want):
+        for m in self.mods:
+            if m["cid"] == cid:
+                self.sel[m["sid"]] = bool(want)
+        self.refresh_tree()
+        self.refresh_groups()
 
     def member_click(self, sid):
         """Toggle one member, then show the fresh group it still touches."""

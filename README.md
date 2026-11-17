@@ -94,7 +94,9 @@ writes on Apply. The left list shows and edits this order:
 
 Left: filterable mod list with columns `On` / `Title` / `Author` /
 `Steam ID` (click row = toggle on/off; the conflict panel refreshes with each
-toggle). Right: conflict groups
+toggle). Above the right pane: an Authors strip, one row per creator
+(steam id + name) with a checkbox that switches that whole author's mods
+on/off in one click. Right: conflict groups
 with checkbox per member — each row reads `Title (Author)`; click to switch
 a mod on (it moves behind its
 conflicting peers, which switch off) or off again. Bottom:
