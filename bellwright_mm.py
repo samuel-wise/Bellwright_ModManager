@@ -18,6 +18,7 @@ import sys
 import textwrap
 import threading
 import time
+import urllib.parse
 import urllib.request
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -106,12 +107,36 @@ def save_desc_cache(dirpath, cache):
         pass
 
 
-def fetch_desc(sid, cid=""):
-    """Grab one item's description block and creator name from its Steam
-    Workshop page. Names come from the creator profile link's anchor text
-    (the persona name); with cid given, the link matching that creator id is
-    preferred so unrelated links cannot leak in. The vanity slug is only a
-    fallback."""
+def api_details(sid):
+    """Official Steam Web API JSON for one item (anonymous POST)."""
+    url = ("https://api.steampowered.com/ISteamRemoteStorage/"
+           "GetPublishedFileDetails/v1/")
+    data = urllib.parse.urlencode(
+        {"itemcount": 1, "publishedfileids[0]": sid}).encode()
+    req = urllib.request.Request(
+        url, data=data, headers={"Accept": "application/json",
+                                 "User-Agent": "Mozilla/5.0"})
+    for attempt in range(3):
+        try:
+            body = urllib.request.urlopen(req, timeout=12).read().decode(
+                "utf-8", "replace")
+            j = json.loads(body)
+            lst = j.get("response", {}).get("publishedfiledetails") or []
+            return lst[0] if lst else {}
+        except Exception:
+            time.sleep(1)
+    return {}
+
+
+def clean_bb(text):
+    """Flatten BBCode-ish markup the API puts in descriptions."""
+    text = re.sub(r"\[/?(?:b|i|u|h[12]|br|list|olist|li|url(?:=[^\]]*)?"
+                  r"|img(?:=[^\]]*)?|spoiler|table|trow|th|td)\]", " ", text)
+    return " ".join(html.unescape(text).split())
+
+
+def fetch_page(sid):
+    """Item page HTML, with retries (Workshop rate-limits bursts)."""
     url = ("https://steamcommunity.com/sharedfiles/filedetails/"
            "?id=%s&appid=%s" % (sid, APP_ID))
     req = urllib.request.Request(
@@ -124,36 +149,48 @@ def fetch_desc(sid, cid=""):
             break
         except Exception:
             time.sleep(2)
-    if not page:
-        return "", "", ""
-    m = re.search('id="highlightContent">(.+?)</div>', page, re.S)
-    desc = ""
-    if m:
-        text = re.sub(r"<[^>]+>", " ", m.group(1))
-        desc = " ".join(html.unescape(text).split())
+    return page
+
+
+def fetch_desc(sid, cid=""):
+    """Description + last-update epoch from the Steam Web API JSON; creator
+    name from the item page anchor matching the creator id (persona text,
+    vanity slug only as fallback). Page fetched only when needed."""
+    j = api_details(sid)
+    desc = clean_bb(str(j.get("description") or "")) if j else ""
+    updated = str(j.get("time_updated") or "")
     name = ""
-    pats = []
-    if cid:
-        pats.append('href="[^"]*/(?:profiles|online)/%s[^"]*"[^>]*>'
-                    '([^<]{2,60})<' % re.escape(cid))
-    pats.append(r'href="[^"]*/(?:id|profiles)/[^"]+"[^>]*>([^<]{2,60})<')
-    for pat in pats:
-        mm = re.search(pat, page)
-        if mm:
-            name = html.unescape(mm.group(1)).strip()
-            if name:
-                break
-    if not name:
-        mm = re.search(r'href="[^"]*/id/([^"/]+)"', page)
-        if mm:
-            name = mm.group(1).strip()
-    if name.endswith("'s Workshop"):
-        name = name[:-len("'s Workshop")]
-    epochs = re.findall(r"\b1[67]\d{8}\b", page)
-    cutoff = int(time.time()) - 3 * 86400
-    past = [e for e in epochs if int(e) <= cutoff]
-    pool = past or epochs
-    updated = max(pool, key=int) if pool else ""
+    page = fetch_page(sid) if cid or not desc else ""
+    if page:
+        if not desc:
+            m = re.search('id="highlightContent">(.+?)</div>', page, re.S)
+            if m:
+                text = re.sub(r"<[^>]+>", " ", m.group(1))
+                desc = " ".join(html.unescape(text).split())
+        pats = []
+        if cid:
+            pats.append('href="[^"]*/(?:profiles|online)/%s[^"]*"[^>]*>'
+                        '([^<]{2,60})<' % re.escape(cid))
+        pats.append(
+            r'href="[^"]*/(?:id|profiles)/[^"]+"[^>]*>([^<]{2,60})<')
+        for pat in pats:
+            mm = re.search(pat, page)
+            if mm:
+                name = html.unescape(mm.group(1)).strip()
+                if name:
+                    break
+        if not name:
+            mm = re.search(r'href="[^"]*/id/([^"/]+)"', page)
+            if mm:
+                name = mm.group(1).strip()
+        if name.endswith("'s Workshop"):
+            name = name[:-len("'s Workshop")]
+    if not updated and page:
+        epochs = re.findall(r"\b1[67]\d{8}\b", page)
+        cutoff = int(time.time()) - 3 * 86400
+        past = [e for e in epochs if int(e) <= cutoff]
+        pool = past or epochs
+        updated = max(pool, key=int) if pool else ""
     return desc, name, updated
 
 
@@ -252,7 +289,8 @@ def fetch_missing(dirpath, mods):
         if (need_desc or need_name) and tries < 60:
             tries += 1
             tried.add(cid)
-            note, pname, pup = fetch_desc(m["sid"], m["cid"])
+            note, pname, pup = fetch_desc(m["sid"],
+                                          "" if cname else cid)
             changed = True
             if note and not ent.get("desc"):
                 ent["desc"] = note
