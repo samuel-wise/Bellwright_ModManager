@@ -929,13 +929,16 @@ class App:
             for li, mm in enumerate(members):
                 letters[mm["sid"]] = letter_for(li)
                 idx[mm["sid"]] = li
-            pick = self.g_pick.get(shown)
-            if pick not in letters:
-                on_m = next((x for x in members if self.sel.get(x["sid"])),
-                            None)
-                pick = (on_m or members[0])["sid"]
-                self.g_pick[shown] = pick
-            var = tk.StringVar(value=pick)
+            sids = set(x["sid"] for x in members)
+            chosen = self.g_pick.get(shown)
+            if chosen:
+                chosen = sids & chosen
+            if not chosen:
+                chosen = set(x["sid"] for x in members
+                             if self.sel.get(x["sid"]))
+            if not chosen:
+                chosen = {members[0]["sid"]}
+            self.g_pick[shown] = chosen
             for mm in members:
                 mark = "[x]" if self.sel.get(mm["sid"]) else "[ ]"
                 base = "%s. %s %s" % (letters[mm["sid"]], mark,
@@ -944,8 +947,9 @@ class App:
                 if stamp:
                     base += " (%s)" % stamp
                 cb = lambda s=mm["sid"]: self.pick_member(s)
-                row = ttk.Radiobutton(frame, text=base, variable=var,
-                                      value=mm["sid"], command=cb)
+                var = tk.BooleanVar(value=mm["sid"] in chosen)
+                row = ttk.Checkbutton(frame, text=base, variable=var,
+                                      command=cb)
                 row.pack(anchor="w")
                 row.bind("<Enter>", lambda e, w=row, mm=mm: self.tip.show(
                     w, "%s\n%s" % (mm["title"], mm["desc"])))
@@ -1005,11 +1009,16 @@ class App:
         self.refresh_groups()
 
     def pick_member(self, sid):
-        """Radio in a group clicked: the pane shows this member's text."""
+        """Checkbox in a group clicked: toggle membership of the picked
+        set; the pane then shows every picked member side by side."""
         group, gnum = self.group_of(sid)
         if group is None:
             return
-        self.g_pick[gnum] = sid
+        chosen = self.g_pick.setdefault(gnum, set())
+        if sid in chosen:
+            chosen.discard(sid)
+        else:
+            chosen.add(sid)
         self.show_group(group, gnum)
 
     def combo_click(self, chosen):
@@ -1070,19 +1079,21 @@ class App:
         self.desc.insert("end", "Overlaps (usually fine): %s" % ", ".join(soft))
 
     def show_group(self, group, gnum):
-        """Pane content for one group: whichever member its radio picks."""
+        """Pane content for one group: every member its checkboxes pick."""
         members = sorted(group, key=lambda x: x["title"])
-        sid = str(self.g_pick.get(gnum) or "")
-        m = next((x for x in members if x["sid"] == sid), None)
-        if m is None:
-            m = next((x for x in members if self.sel.get(x["sid"])), None)
-            m = members[0] if m is None else m
-            self.g_pick[gnum] = m["sid"]
+        chosen = self.g_pick.get(gnum) or set()
+        picked = [x for x in members if x["sid"] in chosen]
+        if not picked:
+            on_m = next((x for x in members if self.sel.get(x["sid"])),
+                        None)
+            picked = [on_m or members[0]]
+            self.g_pick[gnum] = set(x["sid"] for x in picked)
         self.desc.delete("1.0", "end")
-        li = members.index(m)
-        self.desc.insert("end", "----- Group %d, choice %s -----\n"
-                         % (gnum, letter_for(li)))
-        self.describe(m)
+        tags = ", ".join(letter_for(members.index(x)) for x in picked)
+        self.desc.insert("end", "\U0001F4C4 Group %d: %s\n" % (gnum, tags))
+        for m in picked:
+            self.describe(m)
+            self.desc.insert("end", "\n")
 
     def on_hover(self, event):
         sid = self.tree.identify_row(event.y)

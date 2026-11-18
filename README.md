@@ -101,10 +101,11 @@ Left: filterable mod list with columns `On` / `Title` / `Author` /
 toggle). Top of the right column: an Authors strip — one row per creator
 (steam id + name) with a checkbox that switches that whole author's mods
 on/off in one click; it has its own scrollbar, and the divider below it is
-draggable (clamped to half the column). Below: conflict groups; each member row is a radio
-button (one choice per group) reading `[x]/[ ] a. Title (Author)` — choosing
-one writes that mod's description into the bottom pane. Switch mods themselves
-with the left list or a combo row. Each member row ends with
+draggable (clamped to half the column). Below: conflict groups; each member row
+is a checkbox reading `[x]/[ ] a. Title (Author)` — every ticked member shows
+its description in the bottom pane side by side, handy for comparing
+candidates before deciding. Switch mods themselves with the left list or a
+combo row. Each member row ends with
 its last-updated date: the cached Workshop activity stamp when known, else
 the time Steam downloaded the mod. Bottom:
 description pane with its own scrollbar (mouse wheel works on it), showing the
@@ -132,9 +133,8 @@ panes proportionally. The description pane has its own horizontal divider
 above it, also draggable. Hovering any row (mod list or group member) pops
 a tooltip with that mod's description, broken onto new lines after `.`,
 `!`, `?` and wrapped at 70 columns. The pane mirrors each group's current
-radio choice: a `----- Group N, choice a. -----` head, then that mod's
-text; toggling checks keeps the chosen member and refreshes its conflict
-lines.
+tick set: a `📄 Group N: a., c.` head, then every ticked member's text and
+conflict lines, back to back for comparison.
 
 ## Files
 
