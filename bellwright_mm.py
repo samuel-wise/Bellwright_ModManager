@@ -11,6 +11,7 @@ topped up from the Steam Workshop item pages (cached locally).
 
 Usage: python bellwright_mm.py [content_dir] [--smoke]
 """
+import ast
 import html
 import json
 import os
@@ -176,13 +177,40 @@ def discover_games(base):
     return [game_label(a, merged[a]) for a in found]
 
 
+def unwrap_ent(v):
+    """Collapse old double-wrapped cache strings into one dict layer."""
+    dicts = []
+    for _ in range(0, 40):
+        if isinstance(v, dict):
+            dicts.append(v)
+            v = v.get("desc", "")
+        elif isinstance(v, str) and v.strip().startswith("{"):
+            try:
+                v = ast.literal_eval(v.strip())
+            except Exception:
+                break
+        else:
+            break
+    out = {}
+    for d in reversed(dicts):
+        for k, vv in d.items():
+            out.setdefault(k, vv)
+    if isinstance(v, str) and v and not out.get("desc"):
+        out["desc"] = v
+    return out
+
+
 def load_desc_cache(dirpath):
     try:
         with open(desc_cache_path(dirpath), encoding="utf-8-sig") as fh:
             data = json.load(fh)
-        return dict((str(k), str(v)) for k, v in data.items())
     except Exception:
         return {}
+    out = {}
+    for k, v in data.items():
+        k = str(k)
+        out[k] = str(v) if k.startswith("by:") else unwrap_ent(v)
+    return out
 
 
 def save_desc_cache(dirpath, cache):
@@ -713,10 +741,27 @@ class App:
         self.tree.bind("<Leave>", lambda e: self.tip.hide())
         right = ttk.Frame(paned)
         paned.add(right, weight=1)
-        self.authors = ttk.LabelFrame(right, text="Authors")
-        self.authors.pack(side="top", fill="x", pady=(0, 4))
-        panel = ttk.LabelFrame(right, text="Conflict groups")
-        panel.pack(side="top", fill="both", expand=True)
+        self.rpaned = ttk.Panedwindow(right, orient="vertical")
+        self.rpaned.pack(fill="both", expand=True)
+        self.authors = ttk.LabelFrame(self.rpaned, text="Authors")
+        self.rpaned.add(self.authors, weight=0)
+        panel = ttk.LabelFrame(self.rpaned, text="Conflict groups")
+        self.rpaned.add(panel, weight=1)
+        self.rpaned.bind("<Configure>", self.clamp_authors)
+        self.a_canvas = tk.Canvas(self.authors, height=120,
+                                  highlightthickness=0)
+        asb = ttk.Scrollbar(self.authors, orient="vertical",
+                            command=self.a_canvas.yview)
+        self.a_canvas.configure(yscrollcommand=asb.set)
+        self.a_canvas.pack(side="left", fill="both", expand=True)
+        asb.pack(side="left", fill="y")
+        self.a_canvas.bind("<MouseWheel>", self.a_wheel)
+        self.auth_inner = ttk.Frame(self.a_canvas)
+        self.a_canvas.create_window((0, 0), window=self.auth_inner,
+                                    anchor="nw", tags="authwin")
+        self.a_canvas.bind(
+            "<Configure>",
+            lambda e: self.a_canvas.itemconfig("authwin", width=e.width))
         self.canvas = tk.Canvas(panel, width=520, highlightthickness=0)
         psb = ttk.Scrollbar(panel, orient="vertical", command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=psb.set)
@@ -931,7 +976,7 @@ class App:
     def build_authors(self):
         """One row per creator above the groups pane: checkbox + steam id +
         name. The checkbox switches that whole author's mods on/off."""
-        for child in self.authors.winfo_children():
+        for child in self.auth_inner.winfo_children():
             child.destroy()
         heads = {}
         for m in self.mods:
@@ -941,13 +986,16 @@ class App:
             on = any(bool(self.sel.get(x["sid"])) for x in self.mods
                      if x["cid"] == cid)
             var = tk.BooleanVar(value=bool(on))
-            row = ttk.Frame(self.authors)
+            row = ttk.Frame(self.auth_inner)
             row.pack(anchor="w")
             ttk.Checkbutton(row, variable=var,
                             command=lambda c=cid, v=var: self.author_toggle(
                                 c, v.get())).pack(side="left")
             ttk.Label(row, text=cid).pack(side="left", padx=4)
             ttk.Label(row, text=name).pack(side="left")
+        self.a_canvas.update_idletasks()
+        bb = self.a_canvas.bbox("all") or (0, 0, 1, 1)
+        self.a_canvas.configure(scrollregion=bb)
 
     def author_toggle(self, cid, want):
         for m in self.mods:
@@ -982,6 +1030,20 @@ class App:
     def desc_wheel(self, event):
         step = int(-event.delta / 60) or (-1 if event.delta > 0 else 1)
         self.desc.yview_scroll(step, "units")
+
+    def a_wheel(self, event):
+        step = int(-event.delta / 60) or (-1 if event.delta > 0 else 1)
+        self.a_canvas.yview_scroll(step, "units")
+
+    def clamp_authors(self, event):
+        """Keep the Authors strip under half of the right column."""
+        half = max(event.height // 2, 60)
+        try:
+            pos = int(self.rpaned.tk.call(self.rpaned._w, "sash", "0"))
+        except Exception:
+            return
+        if pos > half:
+            self.rpaned.tk.call(self.rpaned._w, "sashpos", "0", str(half))
 
     def show_desc(self, event=None):
         sel = self.tree.selection()
