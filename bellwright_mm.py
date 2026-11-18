@@ -634,6 +634,16 @@ def letter_for(li):
     return chr(97 + li) if li < 26 else "%s%d" % (chr(97 + li % 26), li // 26)
 
 
+def ranked_members(group):
+    """Group members sorted by clash count: biggest offenders first; ties
+    keep alphabetical order."""
+    counts = dict((x["sid"], sum(1 for y in group
+                                 if y["sid"] != x["sid"]
+                                 and conflicts(x, y)))
+                  for x in group)
+    return sorted(group, key=lambda x: (-counts[x["sid"]], x["title"]))
+
+
 def tip_text(text):
     """Break after end-of-sentence punctuation, wrap lines at 70 columns."""
     spaced = text.replace(". ", ".\n").replace("! ", "!\n")
@@ -923,13 +933,13 @@ class App:
         for g in groups:
             take = [x for x in pool if any(conflicts(x, y) for y in g)]
             pool = [x for x in pool if x not in take]
-            unions.append(sorted(list(g) + take,
-                                 key=lambda x: x["title"]))
+            unions.append(list(g) + take)
         self.group_union = unions
         for child in self.panel.winfo_children():
             child.destroy()
         shown = 0
-        for gi, members in enumerate(unions):
+        for gi, tmp in enumerate(unions):
+            members = ranked_members(tmp)
             shown += 1
             frame = ttk.LabelFrame(self.panel, text="Group %d (%d mods)"
                                    % (shown, len(members)))
@@ -938,6 +948,10 @@ class App:
             for li, mm in enumerate(members):
                 letters[mm["sid"]] = letter_for(li)
                 idx[mm["sid"]] = li
+            cnts = dict((mm["sid"], sum(
+                1 for oo in members
+                if oo["sid"] != mm["sid"] and conflicts(mm, oo)))
+                for mm in members)
             sids = set(x["sid"] for x in members)
             chosen = self.g_pick.get(shown)
             chosen = (sids & chosen) if chosen else set()
@@ -948,6 +962,7 @@ class App:
                 stamp = upd_stamp(mm)
                 if stamp:
                     base += " (%s)" % stamp
+                base += " [%d]" % cnts[sid]
                 row = ttk.Frame(frame)
                 row.pack(anchor="w")
                 avar = tk.BooleanVar(value=bool(self.sel.get(sid)))
@@ -1109,7 +1124,7 @@ class App:
 
     def show_group(self, group, gnum):
         """Pane content for one group: every member its checkboxes pick."""
-        members = sorted(group, key=lambda x: x["title"])
+        members = ranked_members(group)
         chosen = self.g_pick.get(gnum) or set()
         picked = [x for x in members if x["sid"] in chosen]
         if not picked:

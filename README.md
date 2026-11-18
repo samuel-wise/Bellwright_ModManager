@@ -109,8 +109,11 @@ the bottom pane side by side; picking rows in another group replaces the
 first group's picks. With nothing ticked the pane falls back to one member.
 A mod that clashes with the checked members stays listed in the group (box 1
 unticked) until the group is fully resolved, so deselecting one member does
-not hide it while its rivals are still live. Each member row ends with
-its last-updated date: the cached Workshop activity stamp when known, else
+not hide it while its rivals are still live. Each member row ends with its
+last-updated date and clash count, e.g. `a. Coin & Craft (Sarpendon)
+(2026-11-17) [129]` — the number counts how many peers in the group it hard-
+conflicts with, and rows are sorted by it, greatest offender first (ties
+alphabetical). The date is the cached Workshop activity stamp when known, else
 the time Steam downloaded the mod. Bottom:
 description pane with its own scrollbar (mouse wheel works on it), showing the
 chosen mod's text broken onto sentence lines, with its hard conflicts and
