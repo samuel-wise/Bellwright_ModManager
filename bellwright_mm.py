@@ -732,6 +732,7 @@ class App:
         self._drag = None
         self._drag_moved = False
         self.g_pick = {}
+        self.group_union = []
         self.tree.bind("<ButtonPress-1>", self.press_row)
         self.tree.bind("<B1-Motion>", self.drag_row)
         self.tree.bind("<ButtonRelease-1>", self.release_row)
@@ -909,22 +910,30 @@ class App:
 
     def group_of(self, sid):
         """Fresh (group, number) for a member sid, or (None, 0)."""
-        for gi, g in enumerate(self.visible_groups()):
+        lists = getattr(self, "group_union", None) or self.visible_groups()
+        for gi, g in enumerate(lists):
             if any(x["sid"] == sid for x in g):
                 return g, gi + 1
         return None, 0
 
     def refresh_groups(self):
         groups = self.visible_groups()
+        pool = [x for x in self.mods if not self.sel.get(x["sid"])]
+        unions = []
+        for g in groups:
+            take = [x for x in pool if any(conflicts(x, y) for y in g)]
+            pool = [x for x in pool if x not in take]
+            unions.append(sorted(list(g) + take,
+                                 key=lambda x: x["title"]))
+        self.group_union = unions
         for child in self.panel.winfo_children():
             child.destroy()
         shown = 0
-        for group in groups:
+        for gi, members in enumerate(unions):
             shown += 1
             frame = ttk.LabelFrame(self.panel, text="Group %d (%d mods)"
-                                   % (shown, len(group)))
+                                   % (shown, len(members)))
             frame.pack(fill="x", pady=3)
-            members = sorted(group, key=lambda x: x["title"])
             letters, idx = {}, {}
             for li, mm in enumerate(members):
                 letters[mm["sid"]] = letter_for(li)
@@ -956,6 +965,7 @@ class App:
                     w.bind("<Enter>", lambda e, w=w, mm=mm: self.tip.show(
                         w, "%s\n%s" % (mm["title"], mm["desc"])))
                     w.bind("<Leave>", lambda e: self.tip.hide())
+            group = [x for x in members if self.sel.get(x["sid"])]
             combos = best_sets(group)
             combos.sort(key=lambda c: min(idx.get(x["sid"], 999)
                                           for x in c))

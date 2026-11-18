@@ -107,7 +107,9 @@ clicking the left list). The second toggles display, drawn as an icon:
 gray box `☐` off, page icon `📄` on. Every `📄` row's description shows in
 the bottom pane side by side; picking rows in another group replaces the
 first group's picks. With nothing ticked the pane falls back to one member.
-Each member row ends with
+A mod that clashes with the checked members stays listed in the group (box 1
+unticked) until the group is fully resolved, so deselecting one member does
+not hide it while its rivals are still live. Each member row ends with
 its last-updated date: the cached Workshop activity stamp when known, else
 the time Steam downloaded the mod. Bottom:
 description pane with its own scrollbar (mouse wheel works on it), showing the
