@@ -946,10 +946,11 @@ class App:
                 act.configure(command=lambda s=sid, v=avar:
                               self.active_toggle(s, v.get()))
                 act.pack(side="left", padx=(0, 4))
-                dvar = tk.BooleanVar(value=sid in chosen)
-                disp = ttk.Checkbutton(row, text=base, variable=dvar,
-                                       command=lambda s=sid:
-                                       self.pick_member(s))
+                mark2 = "\U0001F4C4" if sid in chosen else "\u2610"
+                disp = tk.Label(row, anchor="w", cursor="hand2",
+                                text="%s %s" % (mark2, base))
+                disp.bind("<Button-1>",
+                          lambda e, s=sid: self.pick_member(s))
                 disp.pack(side="left")
                 for w in (row, act, disp):
                     w.bind("<Enter>", lambda e, w=w, mm=mm: self.tip.show(
@@ -1010,16 +1011,18 @@ class App:
         self.refresh_groups()
 
     def pick_member(self, sid):
-        """Checkbox in a group clicked: toggle membership of the picked
-        set; the pane then shows every picked member side by side."""
+        """Paper-icon row clicked: toggle it; this group's picked set
+        replaces the other groups'. Pane shows the picked members together."""
         group, gnum = self.group_of(sid)
         if group is None:
             return
-        chosen = self.g_pick.setdefault(gnum, set())
+        chosen = set(self.g_pick.get(gnum, ()))
         if sid in chosen:
             chosen.discard(sid)
         else:
             chosen.add(sid)
+        self.g_pick = {gnum: chosen}
+        self.refresh_groups()
         self.show_group(group, gnum)
 
     def active_toggle(self, sid, want):

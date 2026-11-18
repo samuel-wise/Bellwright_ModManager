@@ -103,10 +103,11 @@ toggle). Top of the right column: an Authors strip — one row per creator
 on/off in one click; it has its own scrollbar, and the divider below it is
 draggable (clamped to half the column). Below: conflict groups; each member
 row carries two checkboxes — the first is the mod's on/off switch (same as
-clicking the left list), the second ticks the row `a. Title (Author)` for
-display: every ticked row's description shows in the bottom pane side by
-side, handy for comparing candidates. With nothing ticked for display the
-pane falls back to one member. Each member row ends with
+clicking the left list). The second toggles display, drawn as an icon:
+gray box `☐` off, page icon `📄` on. Every `📄` row's description shows in
+the bottom pane side by side; picking rows in another group replaces the
+first group's picks. With nothing ticked the pane falls back to one member.
+Each member row ends with
 its last-updated date: the cached Workshop activity stamp when known, else
 the time Steam downloaded the mod. Bottom:
 description pane with its own scrollbar (mouse wheel works on it), showing the
