@@ -214,35 +214,6 @@ def api_details(sid):
     return {}
 
 
-def api_translate(text):
-    """Chinese text -> English via a free keyless lookup (MyMemory JSON,
-    lingva as second choice). Empty return means: keep the original."""
-    text = " ".join(text.split())[:900]
-    if not text:
-        return ""
-    q = urllib.parse.quote(text)
-    tries = [
-        ("https://api.mymemory.eu/api/get/?q=%s&langpair=zh-CN|en" % q,
-         lambda j: j.get("responseData", {}).get("translatedText")),
-        ("https://lingva.ml/api/v1/translate/auto/en/" + q,
-         lambda j: j.get("translation")),
-    ]
-    for url, pick in tries:
-        try:
-            req = urllib.request.Request(
-                url, headers={"Accept": "application/json",
-                              "User-Agent": "Mozilla/5.0"})
-            body = urllib.request.urlopen(req, timeout=10).read().decode(
-                "utf-8", "replace")
-            out = pick(json.loads(body)) or ""
-            out = " ".join(str(out).split())
-            if out and out.upper() != "SAME" and out != text:
-                return out
-        except Exception:
-            pass
-    return ""
-
-
 def clean_bb(text):
     """Flatten BBCode-ish markup the API puts in descriptions."""
     text = re.sub(r"\[/?(?:b|i|u|h[12]|br|list|olist|li|url(?:=[^\]]*)?"
@@ -617,6 +588,12 @@ def write_modlist(dirpath, sel, order=None):
             fh.write("\n")
     return len(lines)
 
+def readable(text):
+    """Break the flat description onto sentence lines for the pane; the
+    tooltip keeps one wrapped block."""
+    return re.sub(r"(?<=[.!?])\s+", "\n", text.strip())
+
+
 def shown_title(mod):
     """Title plus creator in parentheses, for list and report display."""
     if mod["creator"]:
@@ -692,12 +669,6 @@ class App:
                                 or l.split(" - ")[0] == cur), cur))
         self.game_box.bind("<<ComboboxSelected>>", self.pick_game)
         self.game_box.pack(side="left", padx=(0, 6))
-        ttk.Label(top, text="Translate:").pack(side="left")
-        self.tr_box = ttk.Combobox(top, values=("None", "English"),
-                                   width=8, state="readonly")
-        self.tr_box.set("None")
-        self.tr_box.bind("<<ComboboxSelected>>", self.pick_lang)
-        self.tr_box.pack(side="left", padx=(2, 6))
         filt_lbl.pack(side="left")
         self.filter_var = tk.StringVar()
         ent = ttk.Entry(top, textvariable=self.filter_var, width=40)
@@ -732,6 +703,7 @@ class App:
         vsb.pack(side="left", fill="y")
         self._drag = None
         self._drag_moved = False
+        self.g_pick = {}
         self.tree.bind("<ButtonPress-1>", self.press_row)
         self.tree.bind("<B1-Motion>", self.drag_row)
         self.tree.bind("<ButtonRelease-1>", self.release_row)
@@ -757,9 +729,16 @@ class App:
         self.canvas.bind(
             "<Configure>",
             lambda e: self.canvas.itemconfig("panelwin", width=e.width))
-        self.desc = tk.Text(body, height=6, wrap="word")
+        dframe = ttk.Frame(body)
+        self.desc = tk.Text(dframe, height=6, wrap="word")
+        dsb = ttk.Scrollbar(dframe, orient="vertical",
+                            command=self.desc.yview)
+        self.desc.configure(yscrollcommand=dsb.set)
+        self.desc.pack(side="left", fill="both", expand=True)
+        dsb.pack(side="left", fill="y")
+        self.desc.bind("<MouseWheel>", self.desc_wheel)
         body.add(paned, weight=1)
-        body.add(self.desc, weight=0)
+        body.add(dframe, weight=0)
         bottom = ttk.Frame(root)
         bottom.pack(fill="x", padx=6, pady=4)
         ttk.Button(bottom, text="Auto-resolve all", command=self.auto_all).pack(side="left")
@@ -830,37 +809,6 @@ class App:
         if appid.isdigit():
             self.dirpath = os.path.join(self.base, appid)
             self.reload()
-
-    def pick_lang(self, event=None):
-        """Translate box changed: re-render the current description view."""
-        self.show_desc()
-
-    def desc_for(self, m):
-        """English text when the Translate box says English; fetched lazily
-        in a worker thread and cached under 'tr:<sid>'. Original text shows
-        until the answer arrives (or if no lookup answers)."""
-        if self.tr_box.get() == "None":
-            return m["desc"]
-        sid = m["sid"]
-        cache = load_desc_cache(self.dirpath)
-        note = str(cache.get("tr:" + sid) or "")
-        if note:
-            return note
-        if not hasattr(self, "tr_wait"):
-            self.tr_wait = set()
-        if m["desc"] and sid not in self.tr_wait:
-            self.tr_wait.add(sid)
-
-            def work():
-                out = api_translate(m["desc"])
-                if out:
-                    fresh = load_desc_cache(self.dirpath)
-                    fresh["tr:" + sid] = out
-                    save_desc_cache(self.dirpath, fresh)
-                self.root.after(0, self.show_desc)
-
-            threading.Thread(target=work, daemon=True).start()
-        return m["desc"]
 
     def reload(self):
         self.mods = load_mods(self.dirpath)
@@ -936,6 +884,13 @@ class App:
             for li, mm in enumerate(members):
                 letters[mm["sid"]] = letter_for(li)
                 idx[mm["sid"]] = li
+            pick = self.g_pick.get(shown)
+            if pick not in letters:
+                on_m = next((x for x in members if self.sel.get(x["sid"])),
+                            None)
+                pick = (on_m or members[0])["sid"]
+                self.g_pick[shown] = pick
+            var = tk.StringVar(value=pick)
             for mm in members:
                 mark = "[x]" if self.sel.get(mm["sid"]) else "[ ]"
                 base = "%s. %s %s" % (letters[mm["sid"]], mark,
@@ -943,10 +898,10 @@ class App:
                 stamp = upd_stamp(mm)
                 if stamp:
                     base += " (%s)" % stamp
-                row = ttk.Label(frame, text=base)
+                cb = lambda s=mm["sid"]: self.pick_member(s)
+                row = ttk.Radiobutton(frame, text=base, variable=var,
+                                      value=mm["sid"], command=cb)
                 row.pack(anchor="w")
-                row.bind("<Button-1>",
-                         lambda e, s=mm["sid"]: self.member_click(s))
                 row.bind("<Enter>", lambda e, w=row, mm=mm: self.tip.show(
                     w, "%s\n%s" % (mm["title"], mm["desc"])))
                 row.bind("<Leave>", lambda e: self.tip.hide())
@@ -1001,23 +956,13 @@ class App:
         self.refresh_tree()
         self.refresh_groups()
 
-    def member_click(self, sid):
-        """Toggle one member, then show the fresh group it still touches."""
-        group, _ = self.group_of(sid)
+    def pick_member(self, sid):
+        """Radio in a group clicked: the pane shows this member's text."""
+        group, gnum = self.group_of(sid)
         if group is None:
             return
-        mod = next(x for x in group if x["sid"] == sid)
-        sids = set(x["sid"] for x in group)
-        self.toggle_member(group, mod)
-        shown, num = None, 0
-        for gi, g2 in enumerate(self.visible_groups()):
-            if any(x["sid"] in sids for x in g2):
-                shown, num = g2, gi + 1
-                break
-        if shown is None:
-            self.show_desc()
-        else:
-            self.show_group(shown, num)
+        self.g_pick[gnum] = sid
+        self.show_group(group, gnum)
 
     def combo_click(self, chosen):
         """Apply a captured combo against the fresh group state."""
@@ -1034,6 +979,10 @@ class App:
         step = int(-event.delta / 60) or (-1 if event.delta > 0 else 1)
         self.canvas.yview_scroll(step, "units")
 
+    def desc_wheel(self, event):
+        step = int(-event.delta / 60) or (-1 if event.delta > 0 else 1)
+        self.desc.yview_scroll(step, "units")
+
     def show_desc(self, event=None):
         sel = self.tree.selection()
         sid = sel[0] if sel else ""
@@ -1042,8 +991,13 @@ class App:
         self.desc.delete("1.0", "end")
         if m is None:
             return
+        self.describe(m)
+
+    def describe(self, m):
+        """One mod's pane content: title, readable text, clash lines."""
+        sid = m["sid"]
         self.desc.insert("end", "%s [%s]\n%s\n"
-                         % (m["title"], sid, self.desc_for(m)))
+                         % (m["title"], sid, readable(m["desc"])))
         hard = [o["title"] for o in self.mods
                 if o["sid"] != sid and self.sel.get(o["sid"])
                 and conflicts(m, o)]
@@ -1054,18 +1008,19 @@ class App:
         self.desc.insert("end", "Overlaps (usually fine): %s" % ", ".join(soft))
 
     def show_group(self, group, gnum):
-        """Selected members of one conflict group first, then unselected."""
+        """Pane content for one group: whichever member its radio picks."""
         members = sorted(group, key=lambda x: x["title"])
+        sid = str(self.g_pick.get(gnum) or "")
+        m = next((x for x in members if x["sid"] == sid), None)
+        if m is None:
+            m = next((x for x in members if self.sel.get(x["sid"])), None)
+            m = members[0] if m is None else m
+            self.g_pick[gnum] = m["sid"]
         self.desc.delete("1.0", "end")
-        for want in (True, False):
-            head = "Selected" if want else "Unselected"
-            self.desc.insert("end", "----- %s Items in Group %d -----\n"
-                             % (head, gnum))
-            for li, m in enumerate(members):
-                if bool(self.sel.get(m["sid"])) is want:
-                    self.desc.insert(
-                        "end", "%s. %s\n%s\n\n"
-                        % (letter_for(li), m["title"], self.desc_for(m)))
+        li = members.index(m)
+        self.desc.insert("end", "----- Group %d, choice %s -----\n"
+                         % (gnum, letter_for(li)))
+        self.describe(m)
 
     def on_hover(self, event):
         sid = self.tree.identify_row(event.y)
@@ -1073,7 +1028,7 @@ class App:
         if m is None:
             self.tip.hide()
             return
-        self.tip.show(self.tree, "%s\n%s" % (m["title"], self.desc_for(m)))
+        self.tip.show(self.tree, "%s\n%s" % (m["title"], m["desc"]))
 
     def touch(self, sid):
         """Push a chosen mod to the end of load order: last loaded wins."""

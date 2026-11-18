@@ -89,7 +89,7 @@ writes on Apply. The left list shows and edits this order:
 - Members of a group are lettered `a. b. c. ...` and the maximal compatible
   combinations are listed compactly below them, e.g. `Combo A: a,c,d (3)`,
   `Combo B: b,d (2)`. Click a combo row to apply it to that group; click a
-  member row to toggle it individually. Group numbers are stable (lowest
+  member row to select its description in the pane. Group numbers are stable (lowest
   steam id first) and both the panel and the description pane are recomputed
   from the fresh group state after every click, so a resolved group leaves
   no stale entries behind.
@@ -100,17 +100,15 @@ Left: filterable mod list with columns `On` / `Title` / `Author` /
 `Steam ID` (click row = toggle on/off; the conflict panel refreshes with each
 toggle). Above the right pane: an Authors strip, one row per creator
 (steam id + name) with a checkbox that switches that whole author's mods
-on/off in one click. Right: conflict groups
-with checkbox per member — each row reads `Title (Author)`; click to switch
-a mod on (it moves behind its
-conflicting peers, which switch off) or off again. Each member row ends with
+on/off in one click. Right: conflict groups; each member row is a radio
+button (one choice per group) reading `[x]/[ ] a. Title (Author)` — choosing
+one writes that mod's description into the bottom pane. Switch mods themselves
+with the left list or a combo row. Each member row ends with
 its last-updated date: the cached Workshop activity stamp when known, else
 the time Steam downloaded the mod. Bottom:
-description pane for the selected mod, with its hard conflicts and harmless
-overlaps listed (unchecked mods are ignored in these lists). The
-`Translate` box (`None` / `English`, default `None`) renders this pane's
-descriptions in English through a free lookup, cached per mod; the original
-text shows until each answer arrives. The `On` column
+description pane with its own scrollbar (mouse wheel works on it), showing the
+chosen mod's text broken onto sentence lines, with its hard conflicts and
+harmless overlaps listed (unchecked mods are ignored in these lists). The `On` column
 marks each row: `✓` enabled, blank disabled, `✗` enabled at open but now
 off, `🗹` off at open but now on (marks settle once Apply clears them).
 `Apply` confirms the switch counts first,
@@ -124,19 +122,18 @@ rotated into that folder's `backups\` subfolder;
 checked mods are written first
 and unchecked ones toward the end, so the game shows disabled entries at the
 bottom while enabled mods keep their relative order. Scrollbars on
-both panes; mouse wheel works
-on the conflict panel. Groups are computed among checked mods only, which
+both panes and on the description pane; the mouse wheel works
+on the conflict panel and on the description pane. Groups are computed among checked mods only, which
 is why the panel is often empty; it then shows a "No conflicts among
 currently checked mods" hint. The divider between the two panes is draggable and
 starts at roughly a 50/50 split; resizing the window grows/shrinks both
 panes proportionally. The description pane has its own horizontal divider
 above it, also draggable. Hovering any row (mod list or group member) pops
 a tooltip with that mod's description, broken onto new lines after `.`,
-`!`, `?` and wrapped at 70 columns. After changing a conflict group
-(member click or combo click) the description pane shows that group's
-members in two sections: `----- Selected Items in Group N -----` first,
-then `----- Unselected Items in Group N -----`, each entry lettered to
-match the group panel.
+`!`, `?` and wrapped at 70 columns. The pane mirrors each group's current
+radio choice: a `----- Group N, choice a. -----` head, then that mod's
+text; toggling checks keeps the chosen member and refreshes its conflict
+lines.
 
 ## Files
 
