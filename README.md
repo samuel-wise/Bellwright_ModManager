@@ -101,11 +101,12 @@ Left: filterable mod list with columns `On` / `Title` / `Author` /
 toggle). Top of the right column: an Authors strip — one row per creator
 (steam id + name) with a checkbox that switches that whole author's mods
 on/off in one click; it has its own scrollbar, and the divider below it is
-draggable (clamped to half the column). Below: conflict groups; each member row
-is a checkbox reading `[x]/[ ] a. Title (Author)` — every ticked member shows
-its description in the bottom pane side by side, handy for comparing
-candidates before deciding. Switch mods themselves with the left list or a
-combo row. Each member row ends with
+draggable (clamped to half the column). Below: conflict groups; each member
+row carries two checkboxes — the first is the mod's on/off switch (same as
+clicking the left list), the second ticks the row `a. Title (Author)` for
+display: every ticked row's description shows in the bottom pane side by
+side, handy for comparing candidates. With nothing ticked for display the
+pane falls back to one member. Each member row ends with
 its last-updated date: the cached Workshop activity stamp when known, else
 the time Steam downloaded the mod. Bottom:
 description pane with its own scrollbar (mouse wheel works on it), showing the

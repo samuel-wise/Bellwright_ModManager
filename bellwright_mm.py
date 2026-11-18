@@ -931,29 +931,30 @@ class App:
                 idx[mm["sid"]] = li
             sids = set(x["sid"] for x in members)
             chosen = self.g_pick.get(shown)
-            if chosen:
-                chosen = sids & chosen
-            if not chosen:
-                chosen = set(x["sid"] for x in members
-                             if self.sel.get(x["sid"]))
-            if not chosen:
-                chosen = {members[0]["sid"]}
+            chosen = (sids & chosen) if chosen else set()
             self.g_pick[shown] = chosen
             for mm in members:
-                mark = "[x]" if self.sel.get(mm["sid"]) else "[ ]"
-                base = "%s. %s %s" % (letters[mm["sid"]], mark,
-                                      shown_title(mm))
+                sid = mm["sid"]
+                base = "%s. %s" % (letters[sid], shown_title(mm))
                 stamp = upd_stamp(mm)
                 if stamp:
                     base += " (%s)" % stamp
-                cb = lambda s=mm["sid"]: self.pick_member(s)
-                var = tk.BooleanVar(value=mm["sid"] in chosen)
-                row = ttk.Checkbutton(frame, text=base, variable=var,
-                                      command=cb)
+                row = ttk.Frame(frame)
                 row.pack(anchor="w")
-                row.bind("<Enter>", lambda e, w=row, mm=mm: self.tip.show(
-                    w, "%s\n%s" % (mm["title"], mm["desc"])))
-                row.bind("<Leave>", lambda e: self.tip.hide())
+                avar = tk.BooleanVar(value=bool(self.sel.get(sid)))
+                act = ttk.Checkbutton(row, variable=avar)
+                act.configure(command=lambda s=sid, v=avar:
+                              self.active_toggle(s, v.get()))
+                act.pack(side="left", padx=(0, 4))
+                dvar = tk.BooleanVar(value=sid in chosen)
+                disp = ttk.Checkbutton(row, text=base, variable=dvar,
+                                       command=lambda s=sid:
+                                       self.pick_member(s))
+                disp.pack(side="left")
+                for w in (row, act, disp):
+                    w.bind("<Enter>", lambda e, w=w, mm=mm: self.tip.show(
+                        w, "%s\n%s" % (mm["title"], mm["desc"])))
+                    w.bind("<Leave>", lambda e: self.tip.hide())
             combos = best_sets(group)
             combos.sort(key=lambda c: min(idx.get(x["sid"], 999)
                                           for x in c))
@@ -1020,6 +1021,21 @@ class App:
         else:
             chosen.add(sid)
         self.show_group(group, gnum)
+
+    def active_toggle(self, sid, want):
+        """First checkbox of a member row: the mod's real on/off switch."""
+        mod = next((x for x in self.mods if x["sid"] == sid), None)
+        if mod is None:
+            return
+        self.sel[sid] = bool(want)
+        if want:
+            self.touch(sid)
+            group, _ = self.group_of(sid)
+            for o in group or []:
+                if o["sid"] != sid and conflicts(mod, o):
+                    self.sel[o["sid"]] = False
+        self.refresh_tree()
+        self.refresh_groups()
 
     def combo_click(self, chosen):
         """Apply a captured combo against the fresh group state."""
